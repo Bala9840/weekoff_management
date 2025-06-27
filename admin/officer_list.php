@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['availability'])) {
         $to_station = isset($_POST['to_station'][$officer_id]) ? $conn->real_escape_string($_POST['to_station'][$officer_id]) : 'N/A';
 
         // Get officer details
-        $officer_sql = "SELECT name, username, rank, station_name FROM officer_login WHERE id = ?";
+        $officer_sql = "SELECT name, username, rank, station_name, sub_division FROM officer_login WHERE id = ?";
         $stmt = $conn->prepare($officer_sql);
         if ($stmt === false) {
             die("Error preparing officer statement: " . $conn->error);
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['availability'])) {
             if ($stmt === false) {
                 die("Error preparing update statement: " . $conn->error);
             }
-            $stmt->bind_param("ssssi", $status, $remarks, $to_station, $sub_division, $officer_id);
+            $stmt->bind_param("ssssi", $status, $remarks, $to_station, $officer['sub_division'], $officer_id);
             $stmt->execute();
             $stmt->close();
         } else {
@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['availability'])) {
                 $officer['username'],
                 $officer['rank'],
                 $officer['station_name'],
-                $sub_division,
+                $officer['sub_division'],
                 $status,
                 $remarks,
                 $to_station);
@@ -250,6 +250,7 @@ $has_officers = count($filtered_officers) > 0;
 <html>
 <head>
     <title>Officer List</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         .officer-list-container {
             max-width: 1200px;
@@ -259,12 +260,21 @@ $has_officers = count($filtered_officers) > 0;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
         
+        .header-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        
         .success-message {
             background-color: #d5f5e3;
             color: #27ae60;
             padding: 10px;
             border-radius: 4px;
             margin-bottom: 20px;
+            width: 100%;
         }
         
         .error-message {
@@ -273,12 +283,14 @@ $has_officers = count($filtered_officers) > 0;
             padding: 10px;
             border-radius: 4px;
             margin-bottom: 20px;
+            width: 100%;
         }
         
         .status-filters {
             margin: 20px 0;
             display: flex;
             gap: 10px;
+            flex-wrap: wrap;
         }
         
         .status-filters a {
@@ -310,6 +322,7 @@ $has_officers = count($filtered_officers) > 0;
             margin-top: 20px;
             display: flex;
             gap: 15px;
+            justify-content: space-between;
         }
         
         .submit-btn {
@@ -320,6 +333,7 @@ $has_officers = count($filtered_officers) > 0;
             border-radius: 4px;
             cursor: pointer;
             transition: background-color 0.3s;
+            white-space: nowrap;
         }
         
         .submit-btn:hover {
@@ -333,6 +347,7 @@ $has_officers = count($filtered_officers) > 0;
             text-decoration: none;
             border-radius: 4px;
             transition: background-color 0.3s;
+            white-space: nowrap;
         }
         
         .back-btn:hover {
@@ -350,6 +365,7 @@ $has_officers = count($filtered_officers) > 0;
             padding: 12px 15px;
             text-align: left;
             border-bottom: 1px solid #ddd;
+            vertical-align: middle;
         }
         
         th {
@@ -387,7 +403,27 @@ $has_officers = count($filtered_officers) > 0;
             color: #999;
         }
         
-        @media (max-width: 768px) {
+        .row-submit-btn {
+            padding: 6px 12px;
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            white-space: nowrap;
+        }
+        
+        .row-submit-btn:hover {
+            background-color: #27ae60;
+        }
+        
+        @media (max-width: 992px) {
+            table {
+                display: block;
+                overflow-x: auto;
+            }
+            
             .radio-group {
                 flex-direction: column;
                 gap: 5px;
@@ -395,18 +431,54 @@ $has_officers = count($filtered_officers) > 0;
             
             .form-actions {
                 flex-direction: column;
+                gap: 10px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .header-section {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
             }
             
-            .submit-btn, .back-btn {
-                width: 100%;
-                text-align: center;
+            .status-filters {
+                flex-direction: column;
+            }
+            
+            th, td {
+                padding: 8px;
+                font-size: 14px;
+            }
+            
+            select {
+                min-width: 100px;
+                font-size: 13px;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .officer-list-container {
+                padding: 10px;
+            }
+            
+            .radio-group label {
+                font-size: 13px;
+            }
+            
+            .row-submit-btn {
+                padding: 4px 8px;
+                font-size: 13px;
             }
         }
     </style>
 </head>
 <body>
     <div class="officer-list-container">
-        <h2>Officer List - <?= htmlspecialchars($station_filter ? $station_filter : $station_name); ?></h2>
+        <div class="header-section">
+            <h2>Officer List - <?= htmlspecialchars($station_filter ? $station_filter : $station_name); ?></h2>
+            <a href="dashboard_<?= strtolower($admin_rank) ?>.php" class="back-btn">Back to Dashboard</a>
+        </div>
 
         <?php if (isset($_SESSION['success'])): ?>
             <div class="success-message"><?= $_SESSION['success']; unset($_SESSION['success']); ?></div>
@@ -437,6 +509,7 @@ $has_officers = count($filtered_officers) > 0;
                         <th>Availability Status</th>
                         <th>Remarks</th>
                         <th>OD To Station</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -446,13 +519,14 @@ $has_officers = count($filtered_officers) > 0;
                             $current_status = $officer['availability_status'] ?? 'available';
                             $current_remarks = $officer['remarks'] ?? '';
                             $current_to_station = $officer['to_station'] ?? 'N/A';
+                            $officer_sub_division = $officer['sub_division'] ?? $sub_division;
                         ?>
                             <tr>
                                 <td><?= $serial++; ?></td>
                                 <td><?= htmlspecialchars($officer['name']); ?></td>
                                 <td><?= htmlspecialchars($officer['rank']); ?></td>
                                 <td><?= htmlspecialchars($officer['station_name']); ?></td>
-                                <td><?= htmlspecialchars($officer['sub_division'] ?? 'N/A'); ?></td>
+                                <td><?= htmlspecialchars($officer_sub_division); ?></td>
                                 <td><?= $officer['monthly_count']; ?></td>
                                 <td><?= $officer['total_count']; ?></td>
                                 <td>
@@ -498,18 +572,21 @@ $has_officers = count($filtered_officers) > 0;
                                         <?php endforeach; ?>
                                     </select>
                                 </td>
+                                <td>
+                                    <button type="submit" class="row-submit-btn" onclick="return validateRow(<?= $officer['id']; ?>)">Save</button>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
-                        <tr><td colspan="10">No officers found</td></tr>
+                        <tr><td colspan="11">No officers found</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
 
             <?php if ($has_officers): ?>
                 <div class="form-actions">
-                    <button type="submit" class="submit-btn">Save Changes</button>
                     <a href="dashboard_<?= strtolower($admin_rank) ?>.php" class="back-btn">Back to Dashboard</a>
+                    <button type="submit" class="submit-btn">Save All Changes</button>
                 </div>
             <?php endif; ?>
         </form>
@@ -542,6 +619,38 @@ $has_officers = count($filtered_officers) > 0;
                 toStationSelect.disabled = true;
                 toStationSelect.value = 'N/A';
             }
+        }
+        
+        function validateRow(officerId) {
+            const radio = document.querySelector(`input[name="availability[${officerId}]"][value="not available"]:checked`);
+            if (!radio) return true;
+            
+            const remarksSelect = document.getElementById(`remarks_${officerId}`);
+            const toStationSelect = document.getElementById(`to_station_${officerId}`);
+            let isValid = true;
+            const errorMessages = [];
+            
+            if (remarksSelect.value === '') {
+                isValid = false;
+                errorMessages.push(`Please select remarks for this officer`);
+                remarksSelect.style.borderColor = 'red';
+            } else {
+                remarksSelect.style.borderColor = '';
+            }
+            
+            if (remarksSelect.value === 'OD' && toStationSelect.value === 'N/A') {
+                isValid = false;
+                errorMessages.push(`Please select OD station for this officer`);
+                toStationSelect.style.borderColor = 'red';
+            } else {
+                toStationSelect.style.borderColor = '';
+            }
+            
+            if (!isValid) {
+                alert("Please fix the following errors:\n\n" + errorMessages.join("\n"));
+                return false;
+            }
+            return true;
         }
         
         function validateForm() {
