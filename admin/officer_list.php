@@ -144,9 +144,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['availability'])) {
             $stmt->close();
         }
     }
+    
     $_SESSION['success'] = "Availability status updated successfully";
-    header("Location: officer_list.php" . ($station_filter ? "?station=" . urlencode($station_filter) : ""));
-    exit();
+    
+    // Check if this is an individual save (via the row button)
+    if (isset($_POST['single_save'])) {
+        // Return JSON response for AJAX handling
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'message' => 'Availability status updated successfully']);
+        exit();
+    } else {
+        // Redirect for full form submission
+        header("Location: officer_list.php" . ($station_filter ? "?station=" . urlencode($station_filter) : ""));
+        exit();
+    }
 }
 
 // Get all stations for dropdown
@@ -252,226 +263,304 @@ $has_officers = count($filtered_officers) > 0;
     <title>Officer List</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+    .officer-list-container {
+        max-width: 1200px;
+        margin: 20px auto;
+        padding: 20px;
+        background: #fff;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        width: 100%;
+    }
+    
+    .header-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+        width: 100%;
+    }
+    
+    .success-message {
+        background-color: #d5f5e3;
+        color: #27ae60;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        width: 100%;
+    }
+    
+    .error-message {
+        background-color: #fadbd8;
+        color: #e74c3c;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+        width: 100%;
+    }
+    
+    .status-filters {
+        margin: 20px 0;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .status-filters a {
+        padding: 8px 15px;
+        border-radius: 4px;
+        text-decoration: none;
+        background: #e0e0e0;
+        color: #333;
+    }
+    
+    .status-filters a.active {
+        background: #3498db;
+        color: white;
+    }
+    
+    .radio-group {
+        display: flex;
+        gap: 15px;
+    }
+    
+    .radio-group label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        cursor: pointer;
+    }
+    
+    .form-actions {
+        margin-top: 20px;
+        display: flex;
+        gap: 15px;
+        justify-content: space-between;
+    }
+    
+    .submit-btn {
+        padding: 10px 20px;
+        background-color: #2ecc71;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+        white-space: nowrap;
+    }
+    
+    .submit-btn:hover {
+        background-color: #27ae60;
+    }
+    
+    .back-btn {
+        padding: 10px 20px;
+        background-color: #95a5a6;
+        color: white;
+        text-decoration: none;
+        border-radius: 4px;
+        transition: background-color 0.3s;
+        white-space: nowrap;
+    }
+    
+    .back-btn:hover {
+        background-color: #7f8c8d;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    th, td {
+        padding: 12px 15px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+        vertical-align: middle;
+    }
+    
+    th {
+        background-color: #3498db;
+        color: white;
+        font-weight: 600;
+    }
+    
+    tr:nth-child(even) {
+        background-color: #f8f9fa;
+    }
+    
+    tr:hover {
+        background-color: #f1f1f1;
+    }
+    
+    .status-available {
+        color: #27ae60;
+    }
+    
+    .status-not-available {
+        color: #e74c3c;
+    }
+    
+    select {
+        padding: 6px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        min-width: 120px;
+    }
+    
+    select:disabled {
+        background-color: #f5f5f5;
+        color: #999;
+    }
+    
+    .row-submit-btn {
+        padding: 6px 12px;
+        background-color: #2ecc71;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+        white-space: nowrap;
+    }
+    
+    .row-submit-btn:hover {
+        background-color: #27ae60;
+    }
+    
+    /* Modal styles */
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+    }
+    
+    .modal-content {
+        background-color: #fff;
+        margin: 15% auto;
+        padding: 20px;
+        border-radius: 5px;
+        width: 300px;
+        text-align: center;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    }
+    
+    .modal-success {
+        color: #27ae60;
+    }
+    
+    .modal-error {
+        color: #e74c3c;
+    }
+    
+    .modal-btn {
+        margin-top: 15px;
+        padding: 8px 15px;
+        background-color: #3498db;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 1200px) {
         .officer-list-container {
-            max-width: 1200px;
-            margin: 20px auto;
-            padding: 20px;
-            background: #fff;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            padding: 20px 15px;
         }
-        
-        .header-section {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            margin-bottom: 20px;
-        }
-        
-        .success-message {
-            background-color: #d5f5e3;
-            color: #27ae60;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            width: 100%;
-        }
-        
-        .error-message {
-            background-color: #fadbd8;
-            color: #e74c3c;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            width: 100%;
-        }
-        
-        .status-filters {
-            margin: 20px 0;
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        
-        .status-filters a {
-            padding: 8px 15px;
-            border-radius: 4px;
-            text-decoration: none;
-            background: #e0e0e0;
-            color: #333;
-        }
-        
-        .status-filters a.active {
-            background: #3498db;
-            color: white;
-        }
-        
-        .radio-group {
-            display: flex;
-            gap: 15px;
-        }
-        
-        .radio-group label {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            cursor: pointer;
-        }
-        
-        .form-actions {
-            margin-top: 20px;
-            display: flex;
-            gap: 15px;
-            justify-content: space-between;
-        }
-        
-        .submit-btn {
-            padding: 10px 20px;
-            background-color: #2ecc71;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            white-space: nowrap;
-        }
-        
-        .submit-btn:hover {
-            background-color: #27ae60;
-        }
-        
-        .back-btn {
-            padding: 10px 20px;
-            background-color: #95a5a6;
-            color: white;
-            text-decoration: none;
-            border-radius: 4px;
-            transition: background-color 0.3s;
-            white-space: nowrap;
-        }
-        
-        .back-btn:hover {
-            background-color: #7f8c8d;
+    }
+    
+    @media (max-width: 992px) {
+        .officer-list-container {
+            padding: 15px;
         }
         
         table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        th, td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-            vertical-align: middle;
-        }
-        
-        th {
-            background-color: #3498db;
-            color: white;
-            font-weight: 600;
-        }
-        
-        tr:nth-child(even) {
-            background-color: #f8f9fa;
-        }
-        
-        tr:hover {
-            background-color: #f1f1f1;
-        }
-        
-        .status-available {
-            color: #27ae60;
-        }
-        
-        .status-not-available {
-            color: #e74c3c;
-        }
-        
-        select {
-            padding: 6px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-            min-width: 120px;
-        }
-        
-        select:disabled {
-            background-color: #f5f5f5;
-            color: #999;
-        }
-        
-        .row-submit-btn {
-            padding: 6px 12px;
-            background-color: #2ecc71;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s;
+            display: block;
+            overflow-x: auto;
             white-space: nowrap;
         }
         
-        .row-submit-btn:hover {
-            background-color: #27ae60;
+        .radio-group {
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 10px;
         }
         
-        @media (max-width: 992px) {
-            table {
-                display: block;
-                overflow-x: auto;
-            }
-            
-            .radio-group {
-                flex-direction: column;
-                gap: 5px;
-            }
-            
-            .form-actions {
-                flex-direction: column;
-                gap: 10px;
-            }
+        .form-actions {
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .header-section {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
         }
         
-        @media (max-width: 768px) {
-            .header-section {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 10px;
-            }
-            
-            .status-filters {
-                flex-direction: column;
-            }
-            
-            th, td {
-                padding: 8px;
-                font-size: 14px;
-            }
-            
-            select {
-                min-width: 100px;
-                font-size: 13px;
-            }
+        .status-filters {
+            flex-direction: row;
+            flex-wrap: wrap;
         }
         
-        @media (max-width: 576px) {
-            .officer-list-container {
-                padding: 10px;
-            }
-            
-            .radio-group label {
-                font-size: 13px;
-            }
-            
-            .row-submit-btn {
-                padding: 4px 8px;
-                font-size: 13px;
-            }
+        th, td {
+            padding: 10px 8px;
+            font-size: 14px;
         }
-    </style>
+        
+        select {
+            min-width: 100px;
+            font-size: 13px;
+        }
+        
+        .modal-content {
+            width: 80%;
+            margin: 30% auto;
+        }
+    }
+    
+    @media (max-width: 576px) {
+        .officer-list-container {
+            padding: 15px 10px;
+            margin: 10px auto;
+        }
+        
+        .radio-group {
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .form-actions {
+            flex-direction: column;
+        }
+        
+        .submit-btn, .back-btn {
+            width: 100%;
+            text-align: center;
+        }
+        
+        th, td {
+            padding: 8px 6px;
+            font-size: 13px;
+        }
+        
+        .row-submit-btn {
+            padding: 4px 8px;
+            font-size: 13px;
+        }
+    }
+</style>
 </head>
 <body>
     <div class="officer-list-container">
@@ -495,7 +584,7 @@ $has_officers = count($filtered_officers) > 0;
             <a href="?status=not available<?= $station_filter ? '&station=' . urlencode($station_filter) : '' ?>" class="<?= $status_filter == 'not available' ? 'active' : '' ?>">Not Available</a>
         </div>
 
-        <form method="POST" onsubmit="return validateForm()">
+        <form method="POST" id="availabilityForm" onsubmit="return validateForm()">
             <table>
                 <thead>
                     <tr>
@@ -521,7 +610,7 @@ $has_officers = count($filtered_officers) > 0;
                             $current_to_station = $officer['to_station'] ?? 'N/A';
                             $officer_sub_division = $officer['sub_division'] ?? $sub_division;
                         ?>
-                            <tr>
+                            <tr id="row_<?= $officer['id']; ?>">
                                 <td><?= $serial++; ?></td>
                                 <td><?= htmlspecialchars($officer['name']); ?></td>
                                 <td><?= htmlspecialchars($officer['rank']); ?></td>
@@ -573,7 +662,7 @@ $has_officers = count($filtered_officers) > 0;
                                     </select>
                                 </td>
                                 <td>
-                                    <button type="submit" class="row-submit-btn" onclick="return validateRow(<?= $officer['id']; ?>)">Save</button>
+                                    <button type="button" class="row-submit-btn" onclick="saveSingleOfficer(<?= $officer['id']; ?>)">Save</button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -590,6 +679,14 @@ $has_officers = count($filtered_officers) > 0;
                 </div>
             <?php endif; ?>
         </form>
+    </div>
+
+    <!-- Modal for showing save status -->
+    <div id="statusModal" class="modal">
+        <div class="modal-content">
+            <p id="modalMessage"></p>
+            <button class="modal-btn" onclick="closeModal()">OK</button>
+        </div>
     </div>
 
     <script>
@@ -647,7 +744,7 @@ $has_officers = count($filtered_officers) > 0;
             }
             
             if (!isValid) {
-                alert("Please fix the following errors:\n\n" + errorMessages.join("\n"));
+                showModal(errorMessages.join("\n"), 'error');
                 return false;
             }
             return true;
@@ -680,10 +777,75 @@ $has_officers = count($filtered_officers) > 0;
             });
             
             if (!isValid) {
-                alert("Please fix the following errors:\n\n" + errorMessages.join("\n"));
+                showModal("Please fix the following errors:\n\n" + errorMessages.join("\n"), 'error');
                 return false;
             }
             return true;
+        }
+        
+        function saveSingleOfficer(officerId) {
+            if (!validateRow(officerId)) {
+                return;
+            }
+            
+            // Get form data for this officer only
+            const formData = new FormData();
+            const availabilityValue = document.querySelector(`input[name="availability[${officerId}]:checked`).value;
+            const remarksValue = document.getElementById(`remarks_${officerId}`).value;
+            const toStationValue = document.getElementById(`to_station_${officerId}`).value;
+            
+            formData.append('availability[' + officerId + ']', availabilityValue);
+            formData.append('remarks[' + officerId + ']', remarksValue);
+            formData.append('to_station[' + officerId + ']', toStationValue);
+            formData.append('single_save', 'true');
+            
+            // Show loading indicator
+            const saveBtn = document.querySelector(`button[onclick="saveSingleOfficer(${officerId})"]`);
+            const originalText = saveBtn.textContent;
+            saveBtn.textContent = 'Saving...';
+            saveBtn.disabled = true;
+            
+            // Send AJAX request
+            fetch('officer_list.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showModal(data.message, 'success');
+                } else {
+                    showModal('Error: ' + (data.message || 'Failed to save'), 'error');
+                }
+            })
+            .catch(error => {
+                showModal('Error: ' + error.message, 'error');
+            })
+            .finally(() => {
+                saveBtn.textContent = originalText;
+                saveBtn.disabled = false;
+            });
+        }
+        
+        function showModal(message, type) {
+            const modal = document.getElementById('statusModal');
+            const modalMessage = document.getElementById('modalMessage');
+            
+            modalMessage.textContent = message;
+            modalMessage.className = type === 'success' ? 'modal-success' : 'modal-error';
+            modal.style.display = 'block';
+        }
+        
+        function closeModal() {
+            document.getElementById('statusModal').style.display = 'none';
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('statusModal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
         }
         
         // Initialize form state on page load

@@ -22,9 +22,10 @@ $station_name = $_SESSION['station_name'];
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['approve'])) {
         $request_id = $conn->real_escape_string($_POST['request_id']);
+        $request_date = date('Y-m-d'); // Current date for the approval
         
-        // Get officer_id from request
-        $officer_sql = "SELECT officer_id FROM weekoff_info WHERE id = $request_id";
+        // Get officer_id and request date from the request
+        $officer_sql = "SELECT officer_id, date FROM weekoff_info WHERE id = $request_id";
         $officer_result = $conn->query($officer_sql);
         
         if (!$officer_result) {
@@ -35,28 +36,47 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         $officer_row = $officer_result->fetch_assoc();
         $officer_id = $officer_row['officer_id'];
+        $weekoff_date = $officer_row['date'];
         
-        // Get current total_count for the officer
-        $count_sql = "SELECT total_count FROM weekoff_info 
+        // Get current month's first day
+        $current_month_start = date('Y-m-01', strtotime($weekoff_date));
+        
+        // Get the most recent approved record for this officer to check counts
+        $count_sql = "SELECT total_count, monthly_count, date 
+                     FROM weekoff_info 
                      WHERE officer_id = $officer_id 
                      AND weekoff_status = 'approved'
                      ORDER BY date DESC LIMIT 1";
         $count_result = $conn->query($count_sql);
         
-        if (!$count_result) {
-            $_SESSION['error'] = "Error getting count information: " . $conn->error;
-            header("Location: manage_requests.php");
-            exit();
+        if ($count_result->num_rows > 0) {
+            $count_row = $count_result->fetch_assoc();
+            $previous_date = $count_row['date'];
+            $previous_month_start = date('Y-m-01', strtotime($previous_date));
+            
+            // Check if previous approval was in the same month
+            if ($previous_month_start == $current_month_start) {
+                // Same month - increment both counts
+                $total_count = $count_row['total_count'] + 1;
+                $monthly_count = $count_row['monthly_count'] + 1;
+            } else {
+                // New month - increment total, reset monthly
+                $total_count = $count_row['total_count'] + 1;
+                $monthly_count = 1;
+            }
+        } else {
+            // First approval for this officer
+            $total_count = 1;
+            $monthly_count = 1;
         }
         
-        $total_count = $count_result->num_rows > 0 ? 
-            $count_result->fetch_assoc()['total_count'] + 1 : 1;
-        
+        // Update the request with approved status and counts
         $sql = "UPDATE weekoff_info 
                SET weekoff_status = 'approved', 
                    approved_time = NOW(), 
                    status = 'weekoff',
-                   total_count = $total_count 
+                   total_count = $total_count,
+                   monthly_count = $monthly_count 
                WHERE id = $request_id 
                AND station_name = '$station_name'";
         
@@ -115,7 +135,11 @@ if ($_SESSION['rank'] == 'SP') {
 include ROOT_PATH . '/includes/header.php';
 ?>
 
+
 <div class="manage-requests">
+      <a href="<?php echo htmlspecialchars($dashboard_file); ?>" class="back-btn">Back to Dashboard</a>
+      <br>
+      <br>
     <h2>Manage Week Off Requests - <?php echo htmlspecialchars($station_name); ?></h2>
     
     <?php if (isset($_SESSION['success'])): ?>

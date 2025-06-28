@@ -131,7 +131,13 @@ include '../includes/header.php';
     <div class="upcoming-weekoffs">
         <div class="header-actions">
             <h2><?php echo $title; ?></h2>
-            <span class="date-range"><?php echo date('d-M-Y', strtotime($today)) . " to " . date('d-M-Y', strtotime($next_week)); ?></span>
+            <span class="date-range">
+                <?php 
+                $tomorrow = date('d-M-Y', strtotime('+1 day'));
+                $seven_days_later = date('d-M-Y', strtotime('+7 days'));
+                echo $tomorrow . " to " . $seven_days_later; 
+                ?>
+            </span>
         </div>
         
         <?php if ($result->num_rows > 0): ?>
@@ -160,7 +166,7 @@ include '../includes/header.php';
                 </tbody>
             </table>
         <?php else: ?>
-            <p>No upcoming weekoffs in the next 7 days (excluding today)</p>
+            <p>No upcoming weekoffs from <?php echo $tomorrow; ?> to <?php echo $seven_days_later; ?></p>
         <?php endif; ?>
         
         <a href="dashboard_<?php echo strtolower($admin_rank); ?>.php" class="back-btn">Back to Dashboard</a>

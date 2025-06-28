@@ -54,11 +54,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['complete_od'])) {
     exit();
 }
 
-// Get active OD records - Updated query
-$od_sql = "SELECT o.*, a.availability_status 
+// Get active OD records - Updated query with weekoff counts
+$od_sql = "SELECT o.*, a.availability_status, 
+                  COALESCE(w.monthly_count, 0) AS monthly_count,
+                  COALESCE(w.total_count, 0) AS total_count
           FROM od_records o
           LEFT JOIN availability_info a ON o.officer_id = a.officer_id 
               AND a.availability_updated_date = CURDATE()
+          LEFT JOIN (
+              SELECT officer_id, 
+                     SUM(CASE WHEN date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND weekoff_status = 'approved' THEN 1 ELSE 0 END) AS monthly_count,
+                     SUM(CASE WHEN weekoff_status = 'approved' THEN 1 ELSE 0 END) AS total_count
+              FROM weekoff_info
+              GROUP BY officer_id
+          ) w ON o.officer_id = w.officer_id
           WHERE (o.mother_station = ? OR o.od_station = ?)
           AND o.od_end_date IS NULL
           ORDER BY o.od_start_date DESC";
@@ -69,12 +78,22 @@ $stmt->execute();
 $od_records = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-// Get completed OD records (last 30 days)
-$completed_sql = "SELECT * FROM od_records 
-                 WHERE (mother_station = ? OR od_station = ?)
-                 AND od_end_date IS NOT NULL
-                 AND od_end_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                 ORDER BY od_end_date DESC";
+// Get completed OD records (last 30 days) with weekoff counts
+$completed_sql = "SELECT o.*, 
+                         COALESCE(w.monthly_count, 0) AS monthly_count,
+                         COALESCE(w.total_count, 0) AS total_count
+                 FROM od_records o
+                 LEFT JOIN (
+                     SELECT officer_id, 
+                            SUM(CASE WHEN date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND weekoff_status = 'approved' THEN 1 ELSE 0 END) AS monthly_count,
+                            SUM(CASE WHEN weekoff_status = 'approved' THEN 1 ELSE 0 END) AS total_count
+                     FROM weekoff_info
+                     GROUP BY officer_id
+                 ) w ON o.officer_id = w.officer_id
+                 WHERE (o.mother_station = ? OR o.od_station = ?)
+                 AND o.od_end_date IS NOT NULL
+                 AND o.od_end_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                 ORDER BY o.od_end_date DESC";
 $stmt = $conn->prepare($completed_sql);
 $stmt->bind_param("ss", $station_name, $station_name);
 $stmt->execute();
@@ -183,11 +202,20 @@ $stmt->close();
             border-radius: 4px;
             margin-top: 20px;
         }
+        
+        .count-cell {
+            text-align: center;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
     <div class="od-container">
         <h2>On Duty Records - <?= htmlspecialchars($station_name) ?></h2>
+
+        <a href="dashboard_inspector.php" class="back-btn">Back to Dashboard</a>
+        <br>
+        <br>
         
         <?php if (isset($_SESSION['success'])): ?>
             <div class="success-message"><?= $_SESSION['success']; unset($_SESSION['success']); ?></div>
@@ -213,6 +241,8 @@ $stmt->close();
                             <th>Mother Station</th>
                             <th>OD Station</th>
                             <th>Start Date</th>
+                            <th>Monthly Count</th>
+                            <th>Total Count</th>
                             <th>Status</th>
                             <th>Action</th>
                         </tr>
@@ -224,6 +254,8 @@ $stmt->close();
                             <td><?= htmlspecialchars($record['mother_station']) ?></td>
                             <td><?= htmlspecialchars($record['od_station']) ?></td>
                             <td><?= date('d-M-Y', strtotime($record['od_start_date'])) ?></td>
+                            <td class="count-cell"><?= $record['monthly_count'] ?></td>
+                            <td class="count-cell"><?= $record['total_count'] ?></td>
                             <td class="status-active">Active</td>
                             <td>
                                 <?php if ($record['mother_station'] == $station_name): ?>
@@ -256,6 +288,8 @@ $stmt->close();
                             <th>OD Station</th>
                             <th>Start Date</th>
                             <th>End Date</th>
+                            <th>Monthly Count</th>
+                            <th>Total Count</th>
                             <th>Status</th>
                         </tr>
                     </thead>
@@ -267,6 +301,8 @@ $stmt->close();
                             <td><?= htmlspecialchars($record['od_station']) ?></td>
                             <td><?= date('d-M-Y', strtotime($record['od_start_date'])) ?></td>
                             <td><?= date('d-M-Y', strtotime($record['od_end_date'])) ?></td>
+                            <td class="count-cell"><?= $record['monthly_count'] ?></td>
+                            <td class="count-cell"><?= $record['total_count'] ?></td>
                             <td class="status-completed">Completed</td>
                         </tr>
                         <?php endforeach; ?>

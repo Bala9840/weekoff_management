@@ -60,6 +60,12 @@ $specific_station = isset($_GET['station']) ? $_GET['station'] : null;
 $date_from = isset($_GET['date_from']) ? $_GET['date_from'] : null;
 $date_to = isset($_GET['date_to']) ? $_GET['date_to'] : null;
 
+// Pagination parameters
+$records_per_page = 10;
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+if ($page < 1) $page = 1;
+$offset = ($page - 1) * $records_per_page;
+
 // Build query based on admin rank and filters
 $where_clauses = [];
 $params = [];
@@ -123,7 +129,21 @@ if (!empty($where_clauses)) {
     $sql .= " WHERE " . implode(" AND ", $where_clauses);
 }
 
-$sql .= " ORDER BY w.date DESC";
+// Count total records for pagination
+$count_sql = str_replace("w.*, a.sub_division", "COUNT(*) as total", $sql);
+$count_stmt = $conn->prepare($count_sql);
+if (!empty($params)) {
+    $count_stmt->bind_param($param_types, ...$params);
+}
+$count_stmt->execute();
+$count_result = $count_stmt->get_result();
+$total_records = $count_result->fetch_assoc()['total'];
+$count_stmt->close();
+
+$total_pages = ceil($total_records / $records_per_page);
+
+// Add sorting and pagination to main query
+$sql .= " ORDER BY w.date DESC LIMIT $offset, $records_per_page";
 
 // Prepare and execute
 $stmt = $conn->prepare($sql);
@@ -191,6 +211,13 @@ if ($admin_rank == 'Inspector') {
             padding: 25px;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            opacity: 1;
+            transition: opacity 0.3s ease-in-out;
+            min-height: 500px;
+        }
+
+        .weekoff-records.loading {
+            opacity: 0.5;
         }
 
         .header-actions {
@@ -200,6 +227,13 @@ if ($admin_rank == 'Inspector') {
             margin-bottom: 20px;
             flex-wrap: wrap;
             gap: 20px;
+        }
+
+        .top-navigation {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
         }
 
         .filter-options {
@@ -385,6 +419,47 @@ if ($admin_rank == 'Inspector') {
             background-color: #2980b9;
         }
 
+        .count-cell {
+            text-align: center;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            gap: 5px;
+        }
+
+        .pagination a, .pagination span {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            text-decoration: none;
+            color: #3498db;
+            border-radius: 4px;
+            transition: all 0.3s;
+        }
+
+        .pagination a:hover {
+            background-color: #f1f1f1;
+        }
+
+        .pagination .current {
+            background-color: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+
+        .pagination .disabled {
+            color: #ccc;
+            pointer-events: none;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
         @media (max-width: 768px) {
             .header-actions {
                 flex-direction: column;
@@ -410,26 +485,36 @@ if ($admin_rank == 'Inspector') {
                 align-items: flex-start;
                 gap: 10px;
             }
+
+            .pagination {
+                flex-wrap: wrap;
+            }
         }
     </style>
 </head>
 <body>
     <div class="weekoff-records">
+        <div class="top-navigation">
+            <a href="<?php echo $back_url; ?>" class="back-btn">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+        
         <div class="header-actions">
             <h2><?php echo $title; ?></h2>
             
             <div class="filter-options">
                 <!-- Status Toggle Buttons -->
                 <div class="status-filters">
-                    <a href="?<?php echo http_build_query(array_merge($_GET, ['status' => 'all'])); ?>" 
+                    <a href="?<?php echo http_build_query(array_merge($_GET, ['status' => 'all', 'page' => 1])); ?>" 
                        class="status-btn <?php echo $status_filter == 'all' ? 'active' : ''; ?>">
                        View All
                     </a>
-                    <a href="?<?php echo http_build_query(array_merge($_GET, ['status' => 'approved'])); ?>" 
+                    <a href="?<?php echo http_build_query(array_merge($_GET, ['status' => 'approved', 'page' => 1])); ?>" 
                        class="status-btn <?php echo $status_filter == 'approved' ? 'active' : ''; ?>">
                        Approved
                     </a>
-                    <a href="?<?php echo http_build_query(array_merge($_GET, ['status' => 'rejected'])); ?>" 
+                    <a href="?<?php echo http_build_query(array_merge($_GET, ['status' => 'rejected', 'page' => 1])); ?>" 
                        class="status-btn <?php echo $status_filter == 'rejected' ? 'active' : ''; ?>">
                        Rejected
                     </a>
@@ -444,6 +529,7 @@ if ($admin_rank == 'Inspector') {
                         <input type="hidden" name="sub_division" value="<?php echo htmlspecialchars($_GET['sub_division']); ?>">
                     <?php endif; ?>
                     <input type="hidden" name="status" value="<?php echo htmlspecialchars($status_filter); ?>">
+                    <input type="hidden" name="page" value="1">
                     
                     <div class="filter-group">
                         <label for="filter">Date Filter:</label>
@@ -492,6 +578,8 @@ if ($admin_rank == 'Inspector') {
                             <th>Sub-Division</th>
                             <th>Weekoff Date</th>
                             <th>Status</th>
+                            <th>Monthly Count</th>
+                            <th>Total Count</th>
                             <th>Remarks</th>
                             <th>Requested On</th>
                             <th>Approved On</th>
@@ -508,6 +596,8 @@ if ($admin_rank == 'Inspector') {
                             <td class="status-<?php echo $row['weekoff_status']; ?>">
                                 <?php echo ucfirst($row['weekoff_status']); ?>
                             </td>
+                            <td class="count-cell"><?php echo htmlspecialchars($row['monthly_count']); ?></td>
+                            <td class="count-cell"><?php echo htmlspecialchars($row['total_count']); ?></td>
                             <td><?php echo htmlspecialchars($row['remarks']); ?></td>
                             <td><?php echo date('d-M-Y H:i', strtotime($row['request_time'])); ?></td>
                             <td><?php echo $row['approved_time'] ? date('d-M-Y H:i', strtotime($row['approved_time'])) : 'N/A'; ?></td>
@@ -515,6 +605,60 @@ if ($admin_rank == 'Inspector') {
                         <?php endwhile; ?>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="pagination">
+                <?php if ($page > 1): ?>
+                    <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="page-link">&laquo; Previous</a>
+                <?php else: ?>
+                    <span class="disabled">&laquo; Previous</span>
+                <?php endif; ?>
+
+                <?php
+                // Show page numbers
+                $max_pages_to_show = 5;
+                $start_page = max(1, $page - floor($max_pages_to_show / 2));
+                $end_page = min($total_pages, $start_page + $max_pages_to_show - 1);
+                
+                if ($end_page - $start_page + 1 < $max_pages_to_show) {
+                    $start_page = max(1, $end_page - $max_pages_to_show + 1);
+                }
+                
+                if ($start_page > 1) {
+                    echo '<a href="?' . http_build_query(array_merge($_GET, ['page' => 1])) . '" class="page-link">1</a>';
+                    if ($start_page > 2) {
+                        echo '<span>...</span>';
+                    }
+                }
+                
+                for ($i = $start_page; $i <= $end_page; $i++): ?>
+                    <?php if ($i == $page): ?>
+                        <span class="current"><?php echo $i; ?></span>
+                    <?php else: ?>
+                        <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>" class="page-link"><?php echo $i; ?></a>
+                    <?php endif; ?>
+                <?php endfor; ?>
+                
+                <?php
+                if ($end_page < $total_pages) {
+                    if ($end_page < $total_pages - 1) {
+                        echo '<span>...</span>';
+                    }
+                    echo '<a href="?' . http_build_query(array_merge($_GET, ['page' => $total_pages])) . '" class="page-link">' . $total_pages . '</a>';
+                }
+                ?>
+
+                <?php if ($page < $total_pages): ?>
+                    <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="page-link">Next &raquo;</a>
+                <?php else: ?>
+                    <span class="disabled">Next &raquo;</span>
+                <?php endif; ?>
+            </div>
+            <!-- End Pagination -->
+            
+            <div style="text-align: center; margin-top: 10px; color: #666;">
+                Showing <?php echo ($offset + 1) . " - " . min($offset + $records_per_page, $total_records); ?> of <?php echo $total_records; ?> records
             </div>
         <?php else : ?>
             <div class="no-records">
@@ -537,6 +681,25 @@ if ($admin_rank == 'Inspector') {
 
     <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Get all pagination links
+        const paginationLinks = document.querySelectorAll('.pagination a');
+        const pageContainer = document.querySelector('.weekoff-records');
+        
+        // Add click event listeners to pagination links
+        paginationLinks.forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                // Add loading class to container
+                pageContainer.classList.add('loading');
+                
+                // After a short delay, navigate to the new page
+                setTimeout(() => {
+                    window.location.href = this.href;
+                }, 300);
+            });
+        });
+        
         // Auto-submit date range when both dates are selected
         const dateFrom = document.getElementById('date_from');
         const dateTo = document.getElementById('date_to');
@@ -619,10 +782,10 @@ function exportWeekoffsToPDF($conn, $admin_rank, $sub_division, $station_name) {
             $where_clauses[] = "w.weekoff_status = ?";
             $params[] = $conn->real_escape_string($status_filter);
             $param_types .= 's';
-
         }
 
-        $sql = "SELECT w.name, w.rank, w.station_name, a.sub_division, w.date, w.weekoff_status, w.remarks, w.request_time, w.approved_time 
+        $sql = "SELECT w.name, w.rank, w.station_name, a.sub_division, w.date, w.weekoff_status, 
+                       w.monthly_count, w.total_count, w.remarks, w.request_time, w.approved_time 
                FROM weekoff_info w
                LEFT JOIN admin_login a ON w.station_name = a.station_name";
                
@@ -674,7 +837,6 @@ function exportWeekoffsToPDF($conn, $admin_rank, $sub_division, $station_name) {
     }
 }
 
-
 function generatePdfHtml($result, $admin_rank, $sub_division, $station_name, $filter = 'all', $status_filter = 'all', $date_from = null, $date_to = null) {
     ob_start();
     ?>
@@ -695,6 +857,7 @@ function generatePdfHtml($result, $admin_rank, $sub_division, $station_name, $fi
             .status-pending { color: #f39c12; }
             .footer { margin-top: 1cm; text-align: center; font-size: 10pt; color: #777; }
             .remarks { max-width: 200px; word-wrap: break-word; }
+            .count-cell { text-align: center; font-weight: bold; }
         </style>
     </head>
     <body>
@@ -722,6 +885,8 @@ function generatePdfHtml($result, $admin_rank, $sub_division, $station_name, $fi
                     <th>Sub-Division</th>
                     <th>Weekoff Date</th>
                     <th>Status</th>
+                    <th>Monthly Count</th>
+                    <th>Total Count</th>
                     <th>Remarks</th>
                     <th>Requested On</th>
                     <th>Approved On</th>
@@ -738,6 +903,8 @@ function generatePdfHtml($result, $admin_rank, $sub_division, $station_name, $fi
                     <td class="status-<?= $row['weekoff_status'] ?>">
                         <?= ucfirst($row['weekoff_status']) ?>
                     </td>
+                    <td class="count-cell"><?= $row['monthly_count'] ?></td>
+                    <td class="count-cell"><?= $row['total_count'] ?></td>
                     <td class="remarks" align="center">
                         <?= ($row['weekoff_status'] == 'approved') ? '-----' : htmlspecialchars($row['remarks']) ?>
                     </td>
@@ -767,4 +934,3 @@ function getPdfTitle($admin_rank, $sub_division, $station_name) {
 }
 
 include '../includes/footer.php';
-?>
